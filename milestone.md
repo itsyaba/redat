@@ -11,10 +11,10 @@ Each milestone should leave Redat usable every day. Order is by value per effort
 
 Goal: say a command, and it happens on the desktop.
 
-- [ ] Give Claude shell access: replace `--tools ""` with `Bash` + `--permission-mode bypassPermissions`
-- [ ] System prompt describing my machine (Hyprland, PipeWire, Wayland tools available)
-- [ ] Command log written to `~/.local/state/redat/commands.log`
-- [ ] Spoken reply after the action ("ወደ workspace ሦስት ወስጄዋለሁ")
+- [x] Give Claude shell access: replace `--tools ""` with `Bash` + `--permission-mode bypassPermissions`
+- [x] System prompt describing my machine (Hyprland, PipeWire, Wayland tools available)
+- [x] Command log written to `~/.local/state/redat/commands.log`
+- [x] Spoken reply after the action ("ወደ workspace ሦስት ወስጄዋለሁ")
 - **Done when:** "open Firefox on workspace three" works start to finish.
 
 ## M2 — Hands-free basics: daemon + hotkey + VAD
