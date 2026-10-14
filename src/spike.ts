@@ -31,12 +31,13 @@ async function turn(input: { wav?: string; text?: string }) {
   const t0 = performance.now();
   const heard = input.text ?? (await timed("STT", () => stt(input.wav!)));
   console.log(`  👂 ${heard}`);
-  const reply = await timed("Claude", () =>
+  const { am: reply, en } = await timed("Claude", () =>
     brain.think(heard, {
       onTool: (name, i) => console.log(`  🔧 ${name}: ${i?.command ?? i?.query ?? i?.url ?? JSON.stringify(i)}`),
     }),
   );
   console.log(`  🤖 ${reply}`);
+  if (en) console.log(`  🇬🇧 ${en}`);
   if (!speak) return;
   const out = `${TMP}/reply.wav`;
   const usage = await timed("TTS", () => tts(reply, out));

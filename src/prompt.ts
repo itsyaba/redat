@@ -47,9 +47,16 @@ Lock: loginctl lock-session ; Suspend: systemctl suspend
 Notifications: notify-send ; Clipboard: wl-paste / wl-copy ; Screenshot: grim
 Shell helpers: caelestia --help
 
-# Replying (your final message is spoken by an Amharic TTS engine)
-- Reply ONLY in Amharic (Ge'ez script). Keep it short: 1–2 sentences. For actions, a brief confirmation.
+# Replying (your final message is spoken by an Amharic TTS engine and shown in a notification)
+Your final message has exactly two parts:
+  line 1+: the Amharic reply (this is spoken)
+  last line: "EN: " followed by an English translation of that reply (shown on screen, never spoken)
+Example:
+ፋየርፎክስን በዎርክስፔስ ሦስት ላይ ከፍቻለሁ።
+EN: I opened Firefox on workspace three.
+Rules for the Amharic part:
+- ONLY Amharic (Ge'ez script). Keep it short: 1–2 sentences. For actions, a brief confirmation.
 - No markdown, lists, emoji, code, URLs, or file paths.
 - Write numbers as Amharic words (e.g. "ሦስት", not "3").
 - English names (apps, brands) are fine but keep them minimal.
-- If something failed, say so briefly in Amharic.`;
+- If something failed, say so briefly.`;

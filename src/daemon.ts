@@ -58,6 +58,7 @@ async function turn(input: { wav?: string; text?: string }) {
   const mark = (k: string) => (t[k] = Math.round(performance.now() - t0));
   let heard = input.text ?? "";
   let reply = "";
+  let english = "";
   let error: string | undefined;
   try {
     if (input.wav) {
@@ -75,21 +76,22 @@ async function turn(input: { wav?: string; text?: string }) {
       log("idle too long, new conversation");
       brain.reset();
     }
-    reply = await brain.think(heard, {
+    ({ am: reply, en: english } = await brain.think(heard, {
       onTool: (name, i) => {
         const what = i?.command ?? i?.query ?? i?.url ?? "";
         log(`tool ${name}: ${what}`);
       },
-    });
+    }));
     mark("claude");
-    log(`reply: ${reply}`);
+    log(`reply: ${reply} | ${english}`);
+    const shown = english ? `${reply}\n${english}` : reply;
     const out = `${TMP}/reply.wav`;
     if (Date.now() < ttsDownUntil) {
       log("TTS recently failed, replying as text only");
-      note.show("ረዳት 💬 (no voice)", `${heard}\n\n${reply}`, 20000);
+      note.show("ረዳት 💬 (no voice)", `${heard}\n\n${shown}`, 20000);
       return;
     }
-    note.show("ረዳት 💬", `${heard}\n\n${reply}`, 15000);
+    note.show("ረዳት 💬", `${heard}\n\n${shown}`, 15000);
     try {
       const usage = await tts(reply, out);
       mark("tts");
@@ -117,7 +119,7 @@ async function turn(input: { wav?: string; text?: string }) {
     lastTurnAt = Date.now();
     appendFileSync(
       TURN_LOG,
-      JSON.stringify({ ts: new Date().toISOString(), session: brain.sessionId, heard, reply, error, ms: t }) + "\n",
+      JSON.stringify({ ts: new Date().toISOString(), session: brain.sessionId, heard, reply, english, error, ms: t }) + "\n",
     );
     setState("idle");
   }

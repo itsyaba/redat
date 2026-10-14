@@ -6,6 +6,14 @@ import { SYSTEM_PROMPT } from "./prompt.ts";
 import { desktopSnapshot } from "./desktop.ts";
 import { logCommand } from "./log.ts";
 
+export type Reply = { am: string; en: string };
+
+/** Split Claude's "Amharic…\nEN: English" reply; tolerate a missing EN line. */
+export function splitReply(text: string): Reply {
+  const m = text.match(/^([\s\S]*?)\n\s*EN:\s*([\s\S]*)$/);
+  return m ? { am: m[1].trim(), en: m[2].trim() } : { am: text.trim(), en: "" };
+}
+
 export type BrainEvents = {
   /** Called when Claude starts a tool call (e.g. a Bash command). */
   onTool?: (name: string, input: any) => void;
@@ -21,7 +29,7 @@ export class Brain {
     this.started = false;
   }
 
-  async think(userText: string, events: BrainEvents = {}): Promise<string> {
+  async think(userText: string, events: BrainEvents = {}): Promise<Reply> {
     const message = `${await desktopSnapshot()}\n\n[user said] ${userText}`;
     const args = [
       "-p", message,
@@ -74,6 +82,6 @@ export class Brain {
     if (!result) throw new Error(`claude exited ${code} without a result: ${stderr.slice(0, 500)}`);
     this.started = true;
     if (result.is_error) throw new Error(`Claude failed: ${result.result}`);
-    return String(result.result).trim();
+    return splitReply(String(result.result));
   }
 }
