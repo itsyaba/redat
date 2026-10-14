@@ -1,0 +1,7 @@
+{
+  "name": "redat",
+  "private": true,
+  "type": "module",
+  "scripts": { "spike": "node src/spike.ts" },
+  "engines": { "node": ">=24" }
+}
