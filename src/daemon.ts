@@ -12,6 +12,8 @@ import { Notifier } from "./notify.ts";
 export const SOCKET = `${process.env.XDG_RUNTIME_DIR ?? "/tmp"}/redat.sock`;
 const IDLE_RESET_MS = 15 * 60_000; // start a fresh conversation after this much quiet
 const TURN_LOG = `${STATE}/turns.log`;
+const TTS_BACKOFF_MS = 5 * 60_000; // after a TTS failure, skip voice (text only) for this long
+let ttsDownUntil = 0;
 
 type State = "idle" | "listening" | "thinking" | "speaking";
 
@@ -34,7 +36,7 @@ async function listen() {
   setState("listening");
   await chime("listen"); // before recording, so the chime isn't captured
   await new Promise((r) => setTimeout(r, 150)); // let the chime's tail/echo die out
-  note.show("ረዳት 🎙", "እያዳመጥኩ ነው… (listening)");
+  note.show("ረዳት 🎙", "እያዳመጥኩ ነው… (listening)", 3000);
   recorder = recordUtterance(`${TMP}/utterance.wav`);
   const res = await recorder.done;
   recorder = undefined;
@@ -59,7 +61,6 @@ async function turn(input: { wav?: string; text?: string }) {
   let error: string | undefined;
   try {
     if (input.wav) {
-      note.show("ረዳት ✍️", "…");
       heard = (await stt(input.wav)).trim();
       mark("stt");
       if (!heard) {
@@ -69,7 +70,7 @@ async function turn(input: { wav?: string; text?: string }) {
       }
     }
     log(`heard: ${heard}`);
-    note.show("ረዳት 🤔", heard);
+    note.show("ረዳት 👂", heard, 6000);
     if (Date.now() - lastTurnAt > IDLE_RESET_MS && turns > 0) {
       log("idle too long, new conversation");
       brain.reset();
@@ -78,14 +79,17 @@ async function turn(input: { wav?: string; text?: string }) {
       onTool: (name, i) => {
         const what = i?.command ?? i?.query ?? i?.url ?? "";
         log(`tool ${name}: ${what}`);
-        note.show("ረዳት 🔧", `${heard}\n\n${String(what).slice(0, 200)}`);
       },
     });
     mark("claude");
     log(`reply: ${reply}`);
-    note.show("ረዳት 💬", `${heard}\n\n${reply}`, 15000);
-
     const out = `${TMP}/reply.wav`;
+    if (Date.now() < ttsDownUntil) {
+      log("TTS recently failed, replying as text only");
+      note.show("ረዳት 💬 (no voice)", `${heard}\n\n${reply}`, 20000);
+      return;
+    }
+    note.show("ረዳት 💬", `${heard}\n\n${reply}`, 15000);
     try {
       const usage = await tts(reply, out);
       mark("tts");
@@ -94,7 +98,8 @@ async function turn(input: { wav?: string; text?: string }) {
       // Voice is down: the notification already carries the reply, so just flag it.
       error = `TTS: ${(err as Error).message}`;
       log(error);
-      note.show("ረዳት 💬 (no voice)", `${heard}\n\n${reply}`, 30000);
+      ttsDownUntil = Date.now() + TTS_BACKOFF_MS;
+      note.show("ረዳት 🔇", "የድምፅ አገልግሎቱ አይሰራም (Addis TTS down) — replies are text-only for 5 min", 8000);
       await chime("error");
       return;
     }
