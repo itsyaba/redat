@@ -1,7 +1,4 @@
-import { spawn, execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileP = promisify(execFile);
+import { spawn } from "node:child_process";
 
 /** Start recording 16kHz mono WAV; call the returned stop() to finalize the file. */
 export function startRecording(out: string) {
@@ -16,6 +13,16 @@ export function startRecording(out: string) {
   };
 }
 
+/** Play a file; `stop()` cuts it off. `done` resolves either way. */
+export function playback(path: string) {
+  const p = spawn("pw-play", [path], { stdio: "ignore" });
+  const done = new Promise<void>((r) => {
+    p.once("exit", () => r());
+    p.once("error", () => r());
+  });
+  return { done, stop: () => p.kill("SIGTERM") };
+}
+
 export async function play(path: string) {
-  await execFileP("pw-play", [path]);
+  await playback(path).done;
 }

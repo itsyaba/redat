@@ -15,19 +15,20 @@ Goal: say a command, and it happens on the desktop.
 - [x] System prompt describing my machine (Hyprland, PipeWire, Wayland tools available)
 - [x] Command log written to `~/.local/state/redat/commands.log`
 - [x] Spoken reply after the action ("ወደ workspace ሦስት ወስጄዋለሁ")
-- **Done when:** "open Firefox on workspace three" works start to finish.
+- **Done when:** "open Firefox on workspace three" works start to finish. ✅ (verified by text; voice path waits on Addis TTS + a real-mic check)
 
 ## M2 — Hands-free basics: daemon + hotkey + VAD
 
 Goal: stop living in a terminal.
 
-- [ ] Split the spike into modules (audio, stt, tts, brain, daemon)
-- [ ] Daemon process listening on a Unix socket; `redat` CLI (`start`, `stop`, `listen`, `say`, `status`)
-- [ ] Hyprland keybind runs `redat listen`
-- [ ] VAD: automatic stop on silence
-- [ ] Earcons for listening, thinking, done and error
-- [ ] systemd user service
-- **Done when:** I press SUPER+R, speak, and it acts and replies without touching a terminal.
+- [x] Split the spike into modules (audio, stt, tts, brain, daemon)
+- [x] Daemon process listening on a Unix socket; `redat` CLI (`start`, `stop`, `listen`, `say`, `status`)
+- [x] Hyprland keybind runs `redat listen` (SUPER+Y — SUPER+R was already the Todo workspace)
+- [x] VAD: automatic stop on silence
+- [x] Earcons for listening, thinking, done and error
+- [x] systemd user service
+- **Done when:** I press SUPER+Y, speak, and it acts and replies without touching a terminal. ⏳ everything verified except my real voice
+- [x] Extra: TTS failure fallback (reply shown as a notification), Addis timeouts/retries, STT byte-token fix, turn log
 
 ## M3 — Fast & interruptible
 

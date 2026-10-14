@@ -1,0 +1,16 @@
+# ረዳት (Redat)
+
+Personal Amharic voice assistant for my Hyprland desktop: mic → Addis STT → Claude (`claude` CLI, with
+Bash) → Addis TTS → speaker. See `features.md`, `milestone.md`, `plans/`.
+
+## Use
+
+- **SUPER+Y**, speak, then pause. It stops on silence (or press SUPER+Y again to stop early).
+- SUPER+Y while it's talking interrupts it and listens again.
+- `redat say "ሰላም"` — typed turn · `redat status` · `redat reset` · `redat cancel`
+- `redat log -f` — every command Claude ran · `redat turns` · `redat journal`
+- `redat start|stop|restart` — systemd user service (`redat.service`, starts with the session)
+- Dev: `node src/spike.ts --no-speak --text "..." --text "..."` (multi-turn, no daemon)
+
+Config in `.env`: `ADDIS_API_KEY` (required), `REDAT_VOICE`, `REDAT_MODEL`, `REDAT_VAD_MIN`, `REDAT_VAD_SILENCE_MS`.
+State in `~/.local/state/redat/`.

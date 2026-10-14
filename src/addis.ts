@@ -8,7 +8,7 @@ import { ADDIS, ADDIS_KEY, VOICE } from "./config.ts";
  */
 async function post(path: string, init: () => RequestInit, timeoutMs: number): Promise<{ res: Response; json: any }> {
   let failures = 0;
-  const deadline = Date.now() + 90_000;
+  const deadline = Date.now() + 40_000;
   for (;;) {
     let wait = 1000;
     try {
@@ -28,6 +28,13 @@ async function post(path: string, init: () => RequestInit, timeoutMs: number): P
   }
 }
 
+/** STT sometimes leaks tokenizer byte tokens ("<0xE1><0x88><0xBC>" = "ሼ"); decode them. */
+export function decodeByteTokens(text: string) {
+  return text.replace(/(?:<0x[0-9A-Fa-f]{2}>)+/g, (run) =>
+    Buffer.from(run.match(/[0-9A-Fa-f]{2}(?=>)/g)!.map((h) => parseInt(h, 16))).toString("utf8"),
+  );
+}
+
 export async function stt(wavPath: string): Promise<string> {
   const audio = readFileSync(wavPath);
   const { res, json } = await post("/v2/stt", () => {
@@ -37,7 +44,7 @@ export async function stt(wavPath: string): Promise<string> {
     return { headers: { "x-api-key": ADDIS_KEY }, body: form };
   }, 20_000);
   if (!res.ok || json.status !== "success") throw new Error(`STT failed: ${JSON.stringify(json)}`);
-  return json.data.transcription as string;
+  return decodeByteTokens(json.data.transcription as string);
 }
 
 /** Synthesize Amharic speech into `out` (WAV). Returns credits info if reported. */
@@ -52,7 +59,7 @@ export async function tts(text: string, out: string) {
   const { res, json } = await post("/v1/voice/generations", () => ({
     headers: { "x-api-key": ADDIS_KEY, "content-type": "application/json" },
     body,
-  }), 30_000);
+  }), 20_000);
   if (!res.ok || !json.data) throw new Error(`TTS failed: ${JSON.stringify(json)}`);
   const { audio, audio_url, usage } = json.data;
   if (typeof audio === "string" && audio.startsWith("data:")) {
