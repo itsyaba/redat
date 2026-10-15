@@ -34,12 +34,14 @@ Goal: stop living in a terminal.
 
 Goal: feels like a conversation, not a batch job.
 
-- [ ] Stream Claude output (`--output-format stream-json`) and send each sentence to TTS as it arrives
-- [ ] Queue audio playback so sentences play smoothly back to back
-- [ ] Barge-in: the hotkey stops playback
-- [ ] Follow-up window after each reply
-- [ ] Measure and reduce the time until it starts speaking (target: < 3s)
+- [x] Stream Claude output (`--output-format stream-json`) and send each sentence to TTS as it arrives
+- [x] Queue audio playback so sentences play smoothly back to back
+- [x] Barge-in: the hotkey stops playback
+- [x] Follow-up window after each reply
+- [x] Measure and reduce the time until it starts speaking (target: < 3s)
 - **Done when:** a simple question gets spoken audio in under 3 seconds, and I can cut it off.
+  ✅ mostly: 2.8–3.7s from text to first audio (was ~15s); add ~2.5s for Addis STT when speaking. Barge-in verified.
+- [x] Extra: persistent Claude process (first token ~1s instead of 6–10s), Addis streaming TTS (first audio ~0.8s vs ~4s)
 
 ## M4 — Wake word "ረዳት"
 

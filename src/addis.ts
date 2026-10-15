@@ -48,12 +48,12 @@ export async function stt(wavPath: string): Promise<string> {
 }
 
 /** Synthesize Amharic speech into `out` (WAV). Returns credits info if reported. */
-export async function tts(text: string, out: string) {
+export async function tts(text: string, out: string, format: "wav_44100" | "mp3_44100" = "wav_44100") {
   const body = JSON.stringify({
     text,
     voice_id: VOICE,
     language: "am",
-    output_format: "wav_44100",
+    output_format: format,
     client_request_id: randomUUID(), // same id on retry, so Addis can dedupe
   });
   const { res, json } = await post("/v1/voice/generations", () => ({
@@ -70,4 +70,51 @@ export async function tts(text: string, out: string) {
     writeFileSync(out, Buffer.from(await a.arrayBuffer()));
   }
   return usage as { credits_used: number; credits_remaining: number; currency: string } | undefined;
+}
+
+/**
+ * Streaming TTS (`mp3-frames-v1`, same protocol as the official addisai SDK): the body is a
+ * series of [u32 BE length][MP3 bytes] frames, a zero length, then JSON billing metadata.
+ * Calls `onAudio` with each MP3 chunk as it arrives; resolves with the usage info.
+ */
+export async function ttsStream(text: string, onAudio: (mp3: Buffer) => void, signal?: AbortSignal) {
+  const res = await fetch(`${ADDIS}/v1/voice/generations/stream`, {
+    method: "POST",
+    headers: { "x-api-key": ADDIS_KEY, "content-type": "application/json" },
+    body: JSON.stringify({
+      text,
+      voice_id: VOICE,
+      language: "am",
+      output_format: "mp3_44100",
+      client_request_id: randomUUID(),
+    }),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000),
+  });
+  if (!res.ok || res.headers.get("x-addis-audio-protocol") !== "mp3-frames-v1" || !res.body) {
+    throw new Error(`TTS stream failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
+  }
+  let pending = Buffer.alloc(0);
+  let terminal = false;
+  for await (const chunk of res.body) {
+    pending = Buffer.concat([pending, chunk]);
+    while (!terminal && pending.length >= 4) {
+      const size = pending.readUInt32BE(0);
+      if (size === 0) {
+        terminal = true;
+        pending = pending.subarray(4);
+        break;
+      }
+      if (pending.length < size + 4) break;
+      onAudio(pending.subarray(4, 4 + size));
+      pending = pending.subarray(4 + size);
+    }
+  }
+  if (!terminal) throw new Error("TTS stream ended before completion");
+  try {
+    return JSON.parse(pending.toString("utf8")).data?.usage as
+      | { credits_used: number; credits_remaining: number; currency: string }
+      | undefined;
+  } catch {
+    return undefined;
+  }
 }

@@ -4,8 +4,9 @@ import { appendFileSync, rmSync } from "node:fs";
 import { STATE, TMP, MODEL, VOICE } from "./config.ts";
 import { recordUtterance } from "./vad.ts";
 import { playback } from "./audio.ts";
-import { stt, tts } from "./addis.ts";
+import { stt } from "./addis.ts";
 import { Brain } from "./brain.ts";
+import { Speaker } from "./speaker.ts";
 import { earcon, type Earcon } from "./sounds.ts";
 import { Notifier } from "./notify.ts";
 
@@ -13,6 +14,7 @@ export const SOCKET = `${process.env.XDG_RUNTIME_DIR ?? "/tmp"}/redat.sock`;
 const IDLE_RESET_MS = 15 * 60_000; // start a fresh conversation after this much quiet
 const TURN_LOG = `${STATE}/turns.log`;
 const TTS_BACKOFF_MS = 5 * 60_000; // after a TTS failure, skip voice (text only) for this long
+const FOLLOW_UP_MS = Number(process.env.REDAT_FOLLOW_UP_MS ?? 4000); // 0 disables the follow-up window
 let ttsDownUntil = 0;
 
 type State = "idle" | "listening" | "thinking" | "speaking";
@@ -20,9 +22,13 @@ type State = "idle" | "listening" | "thinking" | "speaking";
 let state: State = "idle";
 let lastTurnAt = 0;
 let turns = 0;
+/** Bumped by every new listen; older turns that were interrupted stop touching state/UI. */
+let gen = 0;
 let recorder: ReturnType<typeof recordUtterance> | undefined;
-let player: ReturnType<typeof playback> | undefined;
+let inFollowUp = false;
+let speaker: Speaker | undefined;
 const brain = new Brain();
+brain.warm();
 const note = new Notifier();
 
 const log = (...a: unknown[]) => console.log(new Date().toISOString().slice(11, 19), ...a);
@@ -32,96 +38,117 @@ function setState(s: State) {
   log(`state → ${s}`);
 }
 
-async function listen() {
+async function listen(followUp = false) {
+  const my = ++gen;
   setState("listening");
   await chime("listen"); // before recording, so the chime isn't captured
   await new Promise((r) => setTimeout(r, 150)); // let the chime's tail/echo die out
-  note.show("ረዳት 🎙", "እያዳመጥኩ ነው… (listening)", 3000);
-  recorder = recordUtterance(`${TMP}/utterance.wav`);
+  if (my !== gen) return;
+  if (!followUp) note.show("ረዳት 🎙", "እያዳመጥኩ ነው… (listening)", 3000);
+  inFollowUp = followUp;
+  recorder = recordUtterance(`${TMP}/utterance.wav`, undefined, followUp ? { noSpeechMs: FOLLOW_UP_MS } : {});
   const res = await recorder.done;
   recorder = undefined;
+  inFollowUp = false;
+  if (my !== gen) return;
   if (res.kind !== "speech") {
-    log(`no speech (${res.kind})`);
-    note.show("ረዳት", "ምንም አልሰማሁም (nothing heard)", 2500);
-    void chime("cancel");
+    log(`no speech (${res.kind}${followUp ? ", follow-up" : ""})`);
+    if (!followUp) {
+      note.show("ረዳት", "ምንም አልሰማሁም (nothing heard)", 2500);
+      void chime("cancel");
+    }
     return setState("idle");
   }
   void chime("heard");
   log(`recorded ${res.ms}ms`);
-  await turn({ wav: res.wav });
+  await turn({ wav: res.wav }, my);
 }
 
-async function turn(input: { wav?: string; text?: string }) {
+async function turn(input: { wav?: string; text?: string }, my = ++gen) {
   setState("thinking");
+  const current = () => my === gen;
   const t: Record<string, number> = {};
   const t0 = performance.now();
-  const mark = (k: string) => (t[k] = Math.round(performance.now() - t0));
+  const mark = (k: string) => (t[k] ??= Math.round(performance.now() - t0));
   let heard = input.text ?? "";
   let reply = "";
   let english = "";
   let error: string | undefined;
+  let spoke = false;
   try {
     if (input.wav) {
       heard = (await stt(input.wav)).trim();
       mark("stt");
       if (!heard) {
-        note.show("ረዳት", "ምንም አልሰማሁም (empty transcript)", 2500);
-        void chime("cancel");
+        if (current()) {
+          note.show("ረዳት", "ምንም አልሰማሁም (empty transcript)", 2500);
+          void chime("cancel");
+        }
         return;
       }
     }
     log(`heard: ${heard}`);
-    note.show("ረዳት 👂", heard, 6000);
+    if (current()) note.show("ረዳት 👂", heard, 6000);
     if (Date.now() - lastTurnAt > IDLE_RESET_MS && turns > 0) {
       log("idle too long, new conversation");
       brain.reset();
     }
+
+    const voice = Date.now() >= ttsDownUntil;
+    const sp = (speaker = new Speaker(my, (u) => u && log(`credits: ${u.credits_used} ${u.currency} (remaining ${u.credits_remaining})`)));
+    sp.started.then(() => {
+      mark("firstAudio");
+      if (current()) setState("speaking");
+    });
     ({ am: reply, en: english } = await brain.think(heard, {
-      onTool: (name, i) => {
-        const what = i?.command ?? i?.query ?? i?.url ?? "";
-        log(`tool ${name}: ${what}`);
+      onText: (d) => {
+        mark("firstToken");
+        if (voice) sp.push(d);
       },
+      onTool: (name, i) => log(`tool ${name}: ${i?.command ?? i?.query ?? i?.url ?? ""}`),
     }));
     mark("claude");
     log(`reply: ${reply} | ${english}`);
+    if (!current()) return void sp.cancel(); // interrupted: the user already moved on
     const shown = english ? `${reply}\n${english}` : reply;
-    const out = `${TMP}/reply.wav`;
-    if (Date.now() < ttsDownUntil) {
-      log("TTS recently failed, replying as text only");
-      note.show("ረዳት 💬 (no voice)", `${heard}\n\n${shown}`, 20000);
-      return;
-    }
-    note.show("ረዳት 💬", `${heard}\n\n${shown}`, 15000);
-    try {
-      const usage = await tts(reply, out);
-      mark("tts");
-      if (usage) log(`credits: ${usage.credits_used} ${usage.currency} (remaining ${usage.credits_remaining})`);
-    } catch (err) {
-      // Voice is down: the notification already carries the reply, so just flag it.
-      error = `TTS: ${(err as Error).message}`;
+    note.show(voice ? "ረዳት 💬" : "ረዳት 💬 (no voice)", `${heard}\n\n${shown}`, voice ? 15000 : 20000);
+    if (!voice) return log("TTS recently failed, replying as text only");
+
+    sp.finish();
+    await sp.done;
+    spoke = sp.played;
+    if (sp.error && !sp.played) {
+      error = `TTS: ${sp.error.message}`;
       log(error);
       ttsDownUntil = Date.now() + TTS_BACKOFF_MS;
       note.show("ረዳት 🔇", "የድምፅ አገልግሎቱ አይሰራም (Addis TTS down) — replies are text-only for 5 min", 8000);
       await chime("error");
-      return;
+    } else if (sp.error) {
+      error = `TTS (partial): ${sp.error.message}`;
+      log(error);
     }
-    setState("speaking");
-    player = playback(out);
-    await player.done;
-    player = undefined;
   } catch (err) {
+    speaker?.cancel();
     error = (err as Error).message;
     log(`error: ${error}`);
-    note.show("ረዳት ❌", error.slice(0, 300), 10000);
-    await chime("error");
+    if (current()) {
+      note.show("ረዳት ❌", error.slice(0, 300), 10000);
+      await chime("error");
+    }
   } finally {
     turns++;
     lastTurnAt = Date.now();
+    log(`timings ${JSON.stringify(t)}`);
     appendFileSync(
       TURN_LOG,
       JSON.stringify({ ts: new Date().toISOString(), session: brain.sessionId, heard, reply, english, error, ms: t }) + "\n",
     );
-    setState("idle");
+    if (current()) {
+      speaker = undefined;
+      // Follow-up window: keep listening briefly so a reply doesn't need the hotkey again.
+      if (spoke && FOLLOW_UP_MS > 0) start(() => listen(true));
+      else setState("idle");
+    }
   }
 }
 
@@ -140,25 +167,30 @@ function handle(cmd: string, arg: string | undefined): { ok: boolean; msg: strin
         start(listen);
         return { ok: true, msg: "listening" };
       }
+      if (state === "listening" && inFollowUp && !recorder?.speaking) {
+        recorder?.stop(); // hotkey during the quiet follow-up window = a fresh, normal listen
+        start(listen);
+        return { ok: true, msg: "listening" };
+      }
       if (state === "listening") {
         recorder?.stop();
         return { ok: true, msg: "stopped recording" };
       }
-      if (state === "speaking") {
-        player?.stop(); // barge-in: cut the reply, then listen
-        setTimeout(() => state === "idle" && start(listen), 150);
-        return { ok: true, msg: "interrupted, listening" };
-      }
-      note.show("ረዳት ⏳", "እያሰብኩ ነው… (busy)", 2000);
-      return { ok: false, msg: "busy thinking" };
+      // thinking or speaking: barge in — silence the reply and listen again
+      speaker?.cancel();
+      start(listen);
+      return { ok: true, msg: "interrupted, listening" };
     case "say":
       if (!arg) return { ok: false, msg: "say needs text" };
-      if (state !== "idle") return { ok: false, msg: `busy (${state})` };
+      if (state === "listening") return { ok: false, msg: "busy (listening)" };
+      speaker?.cancel();
       start(() => turn({ text: arg }));
       return { ok: true, msg: "accepted" };
     case "cancel":
+      gen++;
       recorder?.stop();
-      player?.stop();
+      speaker?.cancel();
+      setState("idle");
       return { ok: true, msg: `cancelled (${state})` };
     case "reset":
       brain.reset();
@@ -178,7 +210,8 @@ function handle(cmd: string, arg: string | undefined): { ok: boolean; msg: strin
 
 function shutdown() {
   recorder?.stop();
-  player?.stop();
+  speaker?.cancel();
+  brain.kill();
   server.close();
   rmSync(SOCKET, { force: true });
   process.exit(0);

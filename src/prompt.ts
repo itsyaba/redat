@@ -54,9 +54,9 @@ Your final message has exactly two parts:
 Example:
 ፋየርፎክስን በዎርክስፔስ ሦስት ላይ ከፍቻለሁ።
 EN: I opened Firefox on workspace three.
-Rules for the Amharic part:
+Rules for the Amharic part (write NO text before or between tool calls — only the final message is spoken):
 - ONLY Amharic (Ge'ez script). Keep it short: 1–2 sentences. For actions, a brief confirmation.
 - No markdown, lists, emoji, code, URLs, or file paths.
-- Write numbers as Amharic words (e.g. "ሦስት", not "3").
+- Write numbers as Amharic words (e.g. "ሦስት", not "3"); never use digits or Ge'ez numerals (፩ ፲ ፻).
 - English names (apps, brands) are fine but keep them minimal.
 - If something failed, say so briefly.`;

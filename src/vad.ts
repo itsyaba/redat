@@ -51,7 +51,8 @@ export function wavFile(pcm: Buffer, rate = RATE): Buffer {
  * `stop()` ends early: keeps what was said if speech started, otherwise cancels.
  * `input` replaces the mic with a raw s16 16kHz mono stream (for tests).
  */
-export function recordUtterance(out: string, input?: Readable) {
+export function recordUtterance(out: string, input?: Readable, opts: { noSpeechMs?: number } = {}) {
+  const noSpeechMs = opts.noSpeechMs ?? VAD.noSpeechMs;
   const rec = input
     ? { stdout: input, kill: () => input.destroy(), once: (e: string, f: () => void) => input.once(e === "exit" ? "close" : e, f) }
     : spawn("pw-record", ["--rate", String(RATE), "--channels", "1", "--format", "s16", "--raw", "-"], {
@@ -110,7 +111,7 @@ export function recordUtterance(out: string, input?: Readable) {
       if (speechStartFrame >= 0) {
         if (ms(frames - lastVoicedFrame) >= VAD.endSilenceMs) return end("speech");
         if (ms(frames - speechStartFrame) >= VAD.maxMs) return end("speech");
-      } else if (ms(frames) >= VAD.noSpeechMs) return end("silence");
+      } else if (ms(frames) >= noSpeechMs) return end("silence");
     }
   });
   rec.once("exit", () => end(speechStartFrame >= 0 ? "speech" : "cancelled"));
