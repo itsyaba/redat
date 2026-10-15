@@ -51,7 +51,11 @@ export function wavFile(pcm: Buffer, rate = RATE): Buffer {
  * `stop()` ends early: keeps what was said if speech started, otherwise cancels.
  * `input` replaces the mic with a raw s16 16kHz mono stream (for tests).
  */
-export function recordUtterance(out: string, input?: Readable, opts: { noSpeechMs?: number } = {}) {
+export function recordUtterance(
+  out: string,
+  input?: Readable,
+  opts: { noSpeechMs?: number; onLevel?: (rms: number) => void } = {},
+) {
   const noSpeechMs = opts.noSpeechMs ?? VAD.noSpeechMs;
   const rec = input
     ? { stdout: input, kill: () => input.destroy(), once: (e: string, f: () => void) => input.once(e === "exit" ? "close" : e, f) }
@@ -92,6 +96,7 @@ export function recordUtterance(out: string, input?: Readable, opts: { noSpeechM
       const level = rms(pending, 0);
       pending = pending.subarray(FRAME * 2);
       frames++;
+      if (frames % 3 === 0) opts.onLevel?.(level); // ~11 Hz, for the panel's waveform
       if (ms(frames) <= VAD.calibrateMs) {
         calib.push(level);
         if (ms(frames + 1) > VAD.calibrateMs) {

@@ -16,6 +16,9 @@ const USAGE = `redat — Amharic voice assistant
   redat say <text>    run a turn from typed Amharic
   redat cancel        stop listening/speaking
   redat mute [on|off] toggle the "ረዳት" wake word
+  redat pause [on|off] pause/resume the spoken reply (toggle by default)
+  redat speed [x]     reply speed, e.g. 1.15 (0.5–2); no value = show it
+  redat panel         show/hide the panel (SUPER+SHIFT+Y)
   redat enroll [n]    record my own "ረዳት" (n times, default 15) and some normal speech
   redat train         retrain the wake word (after enroll) and restart redat-wake
   redat reset         start a new conversation
@@ -24,7 +27,7 @@ const USAGE = `redat — Amharic voice assistant
   redat turns [-f]    turn history with timings
   redat journal       follow daemon logs
   redat daemon        run the daemon in the foreground
-  redat start|stop|restart   control the systemd user service`;
+  redat start|stop|restart   control the systemd user services (daemon, wake word, panel)`;
 
 function request(cmd: string, arg?: string): Promise<{ ok: boolean; msg: string } | undefined> {
   return new Promise((resolve) => {
@@ -98,7 +101,12 @@ switch (cmd) {
     send("say", rest.join(" "));
     break;
   case "mute":
-    send("mute", rest[0]);
+  case "pause":
+  case "speed":
+    send(cmd, rest[0]);
+    break;
+  case "panel":
+    process.exitCode = spawnSync("qs", ["-p", `${ROOT}panel`, "ipc", "call", "panel", "toggle"], { stdio: "inherit" }).status ?? 1;
     break;
   case "enroll":
     await enroll(Number(rest[0] ?? 15));
@@ -115,7 +123,7 @@ switch (cmd) {
   case "start":
   case "stop":
   case "restart":
-    process.exitCode = spawnSync("systemctl", ["--user", cmd, "redat.service", "redat-wake.service"], { stdio: "inherit" }).status ?? 1;
+    process.exitCode = spawnSync("systemctl", ["--user", cmd, "redat.service", "redat-wake.service", "redat-panel.service"], { stdio: "inherit" }).status ?? 1;
     break;
   case "log":
     tail(COMMAND_LOG);

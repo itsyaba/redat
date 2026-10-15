@@ -16,7 +16,9 @@ export function splitReply(text: string): Reply {
 
 export type BrainEvents = {
   /** Called when Claude starts a tool call (e.g. a Bash command). */
-  onTool?: (name: string, input: any) => void;
+  onTool?: (name: string, input: any, id: string) => void;
+  /** Called when that tool call finishes. */
+  onToolResult?: (id: string, output: string, error: boolean) => void;
   /** Streaming text as Claude writes it. */
   onText?: (delta: string) => void;
 };
@@ -107,7 +109,7 @@ export class Brain {
       for (const c of content) {
         if (c.type !== "tool_use") continue;
         this.pending.set(c.id, { name: c.name, input: c.input });
-        t.events.onTool?.(c.name, c.input);
+        t.events.onTool?.(c.name, c.input, c.id);
       }
     } else if (ev.type === "user" && Array.isArray(content)) {
       for (const c of content) {
@@ -118,6 +120,7 @@ export class Brain {
           ? c.content.map((x: any) => x.text ?? "").join("")
           : String(c.content ?? "");
         logCommand({ tool: call?.name ?? "?", input: call?.input, output, error: !!c.is_error });
+        t.events.onToolResult?.(c.tool_use_id, output, !!c.is_error);
       }
     } else if (ev.type === "result") {
       this.turn = undefined;

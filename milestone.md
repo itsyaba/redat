@@ -54,26 +54,28 @@ Goal: fully hands-free.
 - **Done when:** saying "ረዳት" from across the room reliably starts listening, and it rarely triggers when it shouldn't.
   ✅ verified on recorded files; keep tuning the threshold from real-room use.
 
-## M5 — Redat panel (see it think, control it, type to it)
+## M5 — Redat panel (see it think, control it, type to it) ✅
 
 Goal: whenever Redat is active, a panel drops down from the top of the screen in the same style as the
 Caelestia dashboard (Media/Performance tabs). It shows what Redat hears, thinks and does, and you can
 control it with the mouse or keyboard.
 
-- [ ] Daemon event stream: a `subscribe` command on the socket that pushes JSON events (state changes,
-      partial/final transcript, text deltas, tool calls + results, audio level, errors, timings)
-- [ ] Separate Quickshell config (`~/.config/quickshell/redat`, run as `qs -c redat`), so Caelestia
-      updates never break it; colours read live from `~/.local/state/caelestia/scheme.json`
-- [ ] Opens automatically on hotkey, wake word or `redat say`; closes a few seconds after going idle; pin to keep it open
-- [ ] Header: an animated orb/waveform for each state (listening · thinking · speaking · idle · muted)
-- [ ] Conversation: what I said, and Redat's reply streaming in as it speaks (Amharic + English line)
-- [ ] Thought process: every command Claude runs, as collapsible rows (command, output, ✓/✗, duration)
-- [ ] Controls: ⏸ pause / ▶ resume speech, ⏹ stop, 🎤 listen, 🔇 wake-word mute, ↺ new conversation
-      (needs pause/resume in the playback queue, not only cancel)
-- [ ] Text box: type a turn instead of speaking (Enter sends); with a toggle for spoken vs silent replies
-- [ ] Hyprland keybind to toggle the panel; the old notifications stay as a fallback when it isn't running
+- [x] Daemon event stream: a `subscribe` command on the socket that pushes JSON events (state changes,
+      transcript, text deltas, tool calls + results, mic level, errors, timings); commands on the same connection
+- [x] Separate Quickshell config (`panel/`, run as `qs -p ~/projects/redat/panel` by `redat-panel.service`),
+      so Caelestia updates never break it; colours read live from `~/.local/state/caelestia/scheme.json`
+- [x] Opens automatically on hotkey, wake word or `redat say`, on the focused monitor; closes 9s after going idle; pin to keep it open
+- [x] Header: an animated orb for each state (listening · thinking · speaking · paused · idle · offline) + mic level bars
+- [x] Conversation: what I said, and Redat's reply streaming in as it speaks (Amharic + English line)
+- [x] Thought process: every command Claude runs, as collapsible rows (command, output, ✓/✗, duration)
+- [x] Controls: ⏸ pause / ▶ resume speech (SIGSTOP/SIGCONT on the player), ⏹ stop, 🎤 listen,
+      🔕 wake-word mute, ↺ new conversation
+- [x] Text box: type a turn instead of speaking (Enter sends); toggle for spoken vs silent replies
+- [x] SUPER+SHIFT+Y (`redat panel`) toggles it with keyboard focus on the text box; notifications only when the panel isn't running
+- [x] Extra: reply speed (default 1.15×, ffmpeg `atempo` keeps the pitch), − / + in the panel, `redat speed`, remembered
 - **Done when:** I say "ረዳት", the panel drops down, I watch the transcript and commands appear live, pause
   it mid-sentence, resume, then type a follow-up question and get an answer.
+  ✅ verified with typed turns (auto-open, live commands, pause/resume, speed); the voice path waits on my mic.
 
 ## M6 — Expressive voice
 

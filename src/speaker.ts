@@ -7,6 +7,9 @@ const BOUNDARY = /[።?!፧፨\n]/;
 
 type Usage = { credits_used: number; credits_remaining: number; currency: string } | undefined;
 
+/** Playback speed; ffmpeg's atempo changes tempo without changing pitch. Applies from the next reply. */
+export const playback = { speed: 1.15 };
+
 /** One sentence being synthesized: MP3 chunks buffer here until it's this sentence's turn to play. */
 class Clip {
   chunks: Buffer[] = [];
@@ -50,14 +53,15 @@ class Clip {
 
 /**
  * Speaks Claude's reply while it is still being written: each complete Amharic sentence starts
- * streaming TTS immediately (in parallel), and the MP3 audio is fed in order into one mpg123
- * process, so playback begins on the first audio chunk and sentences join without gaps.
+ * streaming TTS immediately (in parallel), and the MP3 audio is fed in order into one ffmpeg
+ * process (tempo-adjusted, straight to PipeWire), so playback begins on the first audio chunk and sentences join without gaps.
  * Stops collecting at the "EN:" translation line, which is for the screen only.
  */
 export class Speaker {
   private buf = "";
   private english = false;
   private cancelled = false;
+  private paused = false;
   private finished = false;
   private n = 0;
   private clips: Clip[] = [];
@@ -113,7 +117,13 @@ export class Speaker {
 
   private ensurePlayer() {
     if (this.player) return this.player;
-    const p = spawn("mpg123", ["-q", "-"], { stdio: ["pipe", "ignore", "ignore"] });
+    // Small probe + pulse buffer keep the first-audio delay and the pause lag at ~150ms.
+    const p = spawn("ffmpeg", [
+      "-hide_banner", "-loglevel", "error",
+      "-f", "mp3", "-probesize", "32", "-analyzeduration", "0", "-i", "pipe:0",
+      "-af", `atempo=${playback.speed}`,
+      "-f", "pulse", "-name", "Redat", "-buffer_duration", "150", "Redat",
+    ], { stdio: ["pipe", "ignore", "ignore"] });
     p.stdin.on("error", () => {}); // killed on cancel
     this.playerExit = new Promise((r) => {
       p.once("exit", () => r());
@@ -130,6 +140,7 @@ export class Speaker {
       for await (const b of clip.read()) {
         if (this.cancelled) return;
         const p = this.ensurePlayer();
+        if (this.paused) p.kill("SIGSTOP"); // paused before the first audio arrived
         this.played = true;
         this.firstAudio?.();
         if (!p.stdin.write(b)) await new Promise((r) => p.stdin.once("drain", r));
@@ -147,8 +158,28 @@ export class Speaker {
     return this.n > 0;
   }
 
+  /** Freeze playback (SIGSTOP the player); synthesis keeps buffering meanwhile. */
+  pause() {
+    if (this.paused || this.cancelled) return false;
+    this.paused = true;
+    this.player?.kill("SIGSTOP");
+    return true;
+  }
+
+  resume() {
+    if (!this.paused) return false;
+    this.paused = false;
+    this.player?.kill("SIGCONT");
+    return true;
+  }
+
+  get isPaused() {
+    return this.paused;
+  }
+
   cancel() {
     this.cancelled = true;
+    if (this.paused) this.player?.kill("SIGCONT"); // a stopped process can't act on SIGTERM
     for (const c of this.clips) c.abort.abort();
     this.player?.kill();
   }
