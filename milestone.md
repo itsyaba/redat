@@ -54,7 +54,56 @@ Goal: fully hands-free.
 - **Done when:** saying "ረዳት" from across the room reliably starts listening, and it rarely triggers when it shouldn't.
   ✅ verified on recorded files; keep tuning the threshold from real-room use.
 
-## M5 — Daily tools
+## M5 — Redat panel (see it think, control it, type to it)
+
+Goal: whenever Redat is active, a panel drops down from the top of the screen in the same style as the
+Caelestia dashboard (Media/Performance tabs). It shows what Redat hears, thinks and does, and you can
+control it with the mouse or keyboard.
+
+- [ ] Daemon event stream: a `subscribe` command on the socket that pushes JSON events (state changes,
+      partial/final transcript, text deltas, tool calls + results, audio level, errors, timings)
+- [ ] Separate Quickshell config (`~/.config/quickshell/redat`, run as `qs -c redat`), so Caelestia
+      updates never break it; colours read live from `~/.local/state/caelestia/scheme.json`
+- [ ] Opens automatically on hotkey, wake word or `redat say`; closes a few seconds after going idle; pin to keep it open
+- [ ] Header: an animated orb/waveform for each state (listening · thinking · speaking · idle · muted)
+- [ ] Conversation: what I said, and Redat's reply streaming in as it speaks (Amharic + English line)
+- [ ] Thought process: every command Claude runs, as collapsible rows (command, output, ✓/✗, duration)
+- [ ] Controls: ⏸ pause / ▶ resume speech, ⏹ stop, 🎤 listen, 🔇 wake-word mute, ↺ new conversation
+      (needs pause/resume in the playback queue, not only cancel)
+- [ ] Text box: type a turn instead of speaking (Enter sends); with a toggle for spoken vs silent replies
+- [ ] Hyprland keybind to toggle the panel; the old notifications stay as a fallback when it isn't running
+- **Done when:** I say "ረዳት", the panel drops down, I watch the transcript and commands appear live, pause
+  it mid-sentence, resume, then type a follow-up question and get an answer.
+
+## M6 — Expressive voice
+
+Goal: it sounds like it's listening and reacting, not reading text.
+
+- [ ] Backchannels: short "እሺ…", "እ…", "አዎ" clips played during my mid-sentence pauses (pre-generated
+      with the same Addis voice, cached locally, never more than once every few seconds)
+- [ ] Echo cancellation (PipeWire `echo-cancel` module) so backchannels and replies don't trigger VAD,
+      barge-in or the wake word on speakers
+- [ ] Reply tone: Claude tags each reply with a mood (calm · happy/excited · apologetic · serious);
+      first check which Addis TTS parameters exist (voice, speed, style), else get the effect through
+      wording, punctuation, voice choice and matching earcons
+- [ ] Short "thinking fillers" ("ቆይ እስኪ…") when a tool call will take more than ~2s
+- **Done when:** in a normal conversation it says "እሺ" naturally while I talk, without cutting me off,
+  and an error reply sounds clearly different from good news.
+
+## M7 — Meeting mode
+
+Goal: "ረዳት, ስብሰባውን ያዝልኝ" ("record the meeting for me") and get notes at the end.
+
+- [ ] `redat meeting start|stop` (and by voice): record mic + system audio (PipeWire monitor) for calls
+- [ ] Chunked transcription while recording (Addis STT for Amharic; English parts kept as they are), with timestamps
+- [ ] Summary at the end: key points, decisions, action items (who/what/when), in Amharic with an English
+      line; saved as markdown in `~/Documents/redat/meetings/`
+- [ ] The panel shows a recording indicator and a live transcript; wake word and replies pause while recording
+- [ ] Ask about it afterwards: "ምን ተወሰነ?" ("what was decided?") answers from the saved transcript
+- **Done when:** a 30-minute call produces an accurate summary with action items, without the wake word
+  or replies interrupting the call.
+
+## M8 — Daily tools
 
 - [ ] Timers, alarms and reminders
 - [ ] Notes and to-dos (markdown)
@@ -64,14 +113,22 @@ Goal: fully hands-free.
 - [ ] Ethiopian calendar
 - [ ] STT vocabulary fixes
 
-## M6 — Memory & polish
+## M9 — Memory & polish
 
-- [ ] Memory file of long-term facts
+- [ ] Memory file of long-term facts, loaded automatically before each turn and updated after it
 - [ ] Conversation persists across restarts; "new conversation" / "forget that" commands
-- [ ] Waybar status module
-- [ ] Addis credit tracking + low-credit warning
+- [ ] Small bar indicator in the Caelestia bar (the full status lives in the M5 panel)
+- [ ] Addis credit tracking + low-credit warning (shown in the panel)
 - [ ] Turn replay/debug tooling
 
 ## Later
 
-Telegram, Spotify/MPD, MCP servers, offline Whisper fallback, voice and persona choice.
+- Telegram voice-note gateway (control the PC from my phone)
+- Self-learning skills: save tasks that worked as reusable scripts
+- Screen timeline: periodic screenshot + OCR, "what was I doing at 10?"
+- GUI clicking when no shell command exists (screenshot → coordinates → `ydotool`)
+- Fast path: handle simple commands locally (~100ms) without Claude
+- Proactive briefings and alerts; background tasks that report back
+- Speaker verification before running shell commands
+- Offline Whisper (Amharic fine-tune) fallback; Spotify/MPD; MCP servers; voice and persona choice
+- Room satellites (ESP32-S3)
