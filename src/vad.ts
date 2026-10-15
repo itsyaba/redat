@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import { writeFileSync } from "node:fs";
+import { micTarget } from "./audio.ts";
 
 const RATE = 16000;
 const FRAME = 480; // 30ms of s16 mono
@@ -47,7 +48,7 @@ export function wavFile(pcm: Buffer, rate = RATE): Buffer {
 }
 
 /**
- * Record from the default mic until the speaker goes quiet (energy VAD).
+ * Record from the mic (never a Bluetooth one, see micTarget) until the speaker goes quiet (energy VAD).
  * `stop()` ends early: keeps what was said if speech started, otherwise cancels.
  * `input` replaces the mic with a raw s16 16kHz mono stream (for tests).
  */
@@ -59,7 +60,7 @@ export function recordUtterance(
   const noSpeechMs = opts.noSpeechMs ?? VAD.noSpeechMs;
   const rec = input
     ? { stdout: input, kill: () => input.destroy(), once: (e: string, f: () => void) => input.once(e === "exit" ? "close" : e, f) }
-    : spawn("pw-record", ["--rate", String(RATE), "--channels", "1", "--format", "s16", "--raw", "-"], {
+    : spawn("pw-record", [...micTarget(), "--rate", String(RATE), "--channels", "1", "--format", "s16", "--raw", "-"], {
         stdio: ["ignore", "pipe", "ignore"],
       });
   const chunks: Buffer[] = [];

@@ -1,8 +1,26 @@
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
+
+/**
+ * pw-record args that pin capture to a non-Bluetooth mic. Recording from a Bluetooth headset's mic
+ * forces it into HFP/SCO, and the always-on wake listener then made every headset connect/switch
+ * renegotiate SCO, which hard-froze the PC. REDAT_MIC overrides with a source name.
+ */
+export function micTarget(): string[] {
+  if (process.env.REDAT_MIC) return ["--target", process.env.REDAT_MIC];
+  try {
+    const run = (...a: string[]) => execFileSync("pactl", a, { encoding: "utf8", timeout: 2000 });
+    const sources = run("list", "sources", "short").split("\n").map((l) => l.split("\t")[1]).filter(Boolean);
+    const ok = (n: string) => !n.startsWith("bluez_") && !n.endsWith(".monitor");
+    const def = run("get-default-source").trim();
+    const mic = ok(def) ? def : sources.find(ok);
+    if (mic) return ["--target", mic];
+  } catch {}
+  return []; // no usable non-Bluetooth mic info: fall back to the default
+}
 
 /** Start recording 16kHz mono WAV; call the returned stop() to finalize the file. */
 export function startRecording(out: string) {
-  const rec = spawn("pw-record", ["--rate", "16000", "--channels", "1", "--format", "s16", out]);
+  const rec = spawn("pw-record", [...micTarget(), "--rate", "16000", "--channels", "1", "--format", "s16", out]);
   return {
     async stop() {
       const done = new Promise((r) => rec.once("exit", r));

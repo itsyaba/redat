@@ -68,10 +68,30 @@ def run_file(path: str):
     print(f"{len(x) / 16000:.1f}s scanned")
 
 
+def mic_target() -> list[str]:
+    """pw-record args pinning capture to a non-Bluetooth mic: recording a Bluetooth headset's mic forces
+    it into HFP/SCO, and this always-on stream then made every headset connect/switch renegotiate SCO,
+    which hard-froze the PC. REDAT_MIC overrides with a source name."""
+    if os.environ.get("REDAT_MIC"):
+        return ["--target", os.environ["REDAT_MIC"]]
+    try:
+        run = lambda *a: subprocess.run(["pactl", *a], capture_output=True, text=True, timeout=2).stdout
+        sources = [l.split("\t")[1] for l in run("list", "sources", "short").splitlines() if "\t" in l]
+        ok = lambda n: not n.startswith("bluez_") and not n.endswith(".monitor")
+        default = run("get-default-source").strip()
+        mic = default if ok(default) else next(filter(ok, sources), None)
+        if mic:
+            return ["--target", mic]
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return []
+
+
 def run_live():
     d = Detector()
-    print(f"ረዳት wake word listening (threshold {d.threshold})", flush=True)
-    rec = subprocess.Popen(["pw-record", "--rate", "16000", "--channels", "1", "--format", "s16", "--raw", "-"],
+    target = mic_target()
+    print(f"ረዳት wake word listening on {target[1] if target else 'default mic'} (threshold {d.threshold})", flush=True)
+    rec = subprocess.Popen(["pw-record", *target, "--rate", "16000", "--channels", "1", "--format", "s16", "--raw", "-"],
                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     try:
         while True:
