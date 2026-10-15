@@ -77,7 +77,29 @@ control it with the mouse or keyboard.
   it mid-sentence, resume, then type a follow-up question and get an answer.
   ✅ verified with typed turns (auto-open, live commands, pause/resume, speed); the voice path waits on my mic.
 
-## M6 — Expressive voice
+## M6 — Hands on the computer (keyboard + mouse)
+
+Goal: "ይህን ፎርም ሙላልኝ" ("fill this form for me"). Redat can see the screen, type and move/click the
+mouse like I would, so it can fill website forms and use apps that have no command line.
+
+- [ ] Input backend: `ydotool` (installed; enable `ydotoold` as a user service + uinput access) for mouse
+      move/click/drag/scroll and key presses; Unicode text (Amharic) typed via `wtype` or clipboard paste
+- [ ] See the screen: `grim` screenshot of the focused monitor → Claude vision; screenshot pixels mapped
+      to real cursor coordinates (monitor offset + scale from `hyprctl -j monitors`)
+- [ ] `redat input …` CLI that Claude calls from Bash: `screen`, `move x y`, `click [x y] [left|right|double]`,
+      `type "…"`, `key ctrl+l`, `scroll`, `drag`, `focus <window>`
+- [ ] Look → act → check loop: a fresh screenshot after each step to confirm it worked before the next one
+- [ ] Forms: find the fields, fill them from what I said, then stop before submitting and ask "ልላክ?"
+      ("shall I send it?")
+- [ ] Browser shortcuts first (Ctrl+L, Tab between fields, the accessibility tree where available);
+      pixel clicking as the fallback
+- [ ] Safety: the panel shows "Redat is controlling the computer" + a cursor highlight; moving the mouse,
+      pressing a key, Esc or saying "ቁም" stops it instantly; never types passwords or payment details
+      unless I explicitly say so; every action logged (and shown in the panel like commands)
+- **Done when:** "open the contact form on <site> and fill in my name and email" fills every field
+  correctly with the real cursor and keyboard, then waits for my OK before submitting.
+
+## M7 — Expressive voice
 
 Goal: it sounds like it's listening and reacting, not reading text.
 
@@ -92,7 +114,7 @@ Goal: it sounds like it's listening and reacting, not reading text.
 - **Done when:** in a normal conversation it says "እሺ" naturally while I talk, without cutting me off,
   and an error reply sounds clearly different from good news.
 
-## M7 — Meeting mode
+## M8 — Meeting mode
 
 Goal: "ረዳት, ስብሰባውን ያዝልኝ" ("record the meeting for me") and get notes at the end.
 
@@ -105,17 +127,16 @@ Goal: "ረዳት, ስብሰባውን ያዝልኝ" ("record the meeting for me")
 - **Done when:** a 30-minute call produces an accurate summary with action items, without the wake word
   or replies interrupting the call.
 
-## M8 — Daily tools
+## M9 — Daily tools
 
 - [ ] Timers, alarms and reminders
 - [ ] Notes and to-dos (markdown)
 - [ ] Clipboard read, translate and summarize
 - [ ] Dictation mode (`wtype`)
-- [ ] Screen awareness (grim + vision)
 - [ ] Ethiopian calendar
 - [ ] STT vocabulary fixes
 
-## M9 — Memory & polish
+## M10 — Memory & polish
 
 - [ ] Memory file of long-term facts, loaded automatically before each turn and updated after it
 - [ ] Conversation persists across restarts; "new conversation" / "forget that" commands
@@ -128,7 +149,6 @@ Goal: "ረዳት, ስብሰባውን ያዝልኝ" ("record the meeting for me")
 - Telegram voice-note gateway (control the PC from my phone)
 - Self-learning skills: save tasks that worked as reusable scripts
 - Screen timeline: periodic screenshot + OCR, "what was I doing at 10?"
-- GUI clicking when no shell command exists (screenshot → coordinates → `ydotool`)
 - Fast path: handle simple commands locally (~100ms) without Claude
 - Proactive briefings and alerts; background tasks that report back
 - Speaker verification before running shell commands
