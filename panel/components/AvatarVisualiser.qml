@@ -27,6 +27,7 @@ Item {
     }
 
     property var values: Array(count).fill(0.01)
+    property real energy: 0 // smoothed loudness of the ring, 0..1 (drives the aurora behind it)
     property real phase: 0
 
     CavaProvider {
@@ -56,6 +57,10 @@ Item {
                 next[i] = root.values[i] * 0.55 + Math.max(0.01, Math.min(1, target)) * 0.45;
             }
             root.values = next;
+            let sum = 0;
+            for (let i = 0; i < root.count; i++)
+                sum += next[i];
+            root.energy = root.energy * 0.85 + Math.min(1, sum / root.count * 2.2) * 0.15;
         }
     }
 
@@ -154,7 +159,7 @@ Item {
             anchors.verticalCenterOffset: -root.coverSize * 0.03
             visible: photo.status !== Image.Ready
             text: "ረ"
-            color: root.mode === "offline" ? Theme.onSurface : Theme.onPrimaryContainer
+            color: root.mode === "offline" ? Theme.fgSurface : Theme.fgPrimaryContainer
             font.family: "Noto Sans Ethiopic"
             font.pixelSize: root.coverSize * 0.44
             font.weight: Font.DemiBold

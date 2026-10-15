@@ -32,7 +32,7 @@ Rectangle {
         id: label
         anchors.centerIn: parent
         text: root.text
-        color: Theme.onSurface
+        color: Theme.fgSurface
         font.family: Theme.font
         font.pixelSize: 12
     }

@@ -9,6 +9,6 @@ Text {
     font.family: Theme.icons
     font.pixelSize: size
     font.variableAxes: ({ FILL: filled ? 1 : 0, wght: 450, opsz: 24 })
-    color: Theme.onSurface
+    color: Theme.fgSurface
     renderType: Text.NativeRendering
 }
