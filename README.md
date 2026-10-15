@@ -7,10 +7,15 @@ Bash) → Addis TTS → speaker. See `features.md`, `milestone.md`, `plans/`.
 
 - **SUPER+Y**, speak, then pause. It stops on silence (or press SUPER+Y again to stop early).
 - SUPER+Y while it's talking interrupts it and listens again.
+- Or just say **"ረዳት"** (wake word, `redat-wake.service`). It only wakes when idle, so it never
+  triggers on its own voice. `redat mute` toggles it.
+- `redat enroll` records my own "ረዳት" (plus a few normal sentences), then `redat train` retrains and
+  restarts the detector. My recordings count about 30× more than the synthetic ones.
 - `redat say "ሰላም"` — typed turn · `redat status` · `redat reset` · `redat cancel`
 - `redat log -f` — every command Claude ran · `redat turns` · `redat journal`
-- `redat start|stop|restart` — systemd user service (`redat.service`, starts with the session)
+- `redat start|stop|restart` — systemd user services (`redat.service` + `redat-wake.service`, start with the session)
 - Dev: `node src/spike.ts --no-speak --text "..." --text "..."` (multi-turn, no daemon)
 
-Config in `.env`: `ADDIS_API_KEY` (required), `REDAT_VOICE`, `REDAT_MODEL`, `REDAT_VAD_MIN`, `REDAT_VAD_SILENCE_MS`.
+Config in `.env`: `ADDIS_API_KEY` (required), `REDAT_VOICE`, `REDAT_MODEL`, `REDAT_VAD_MIN`, `REDAT_VAD_SILENCE_MS`,
+`REDAT_FOLLOW_UP_MS`. Wake word: `REDAT_WAKE_THRESHOLD`, `REDAT_WAKE_DEBUG=1` (set in the service's environment).
 State in `~/.local/state/redat/`.

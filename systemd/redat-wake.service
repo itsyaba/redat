@@ -1,0 +1,14 @@
+[Unit]
+Description=ረዳት (Redat) wake-word detector
+PartOf=graphical-session.target
+After=redat.service pipewire.service
+
+[Service]
+ExecStart=%h/projects/redat/wakeword/.venv/bin/python -I %h/projects/redat/wakeword/detect.py
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=5
+Nice=5
+
+[Install]
+WantedBy=graphical-session.target

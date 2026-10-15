@@ -1,6 +1,6 @@
 // ረዳት daemon: owns the mic, the Claude session and playback; driven over a Unix socket by `redat`.
 import { createServer, connect, type Socket } from "node:net";
-import { appendFileSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { STATE, TMP, MODEL, VOICE } from "./config.ts";
 import { recordUtterance } from "./vad.ts";
 import { playback } from "./audio.ts";
@@ -16,6 +16,9 @@ const TURN_LOG = `${STATE}/turns.log`;
 const TTS_BACKOFF_MS = 5 * 60_000; // after a TTS failure, skip voice (text only) for this long
 const FOLLOW_UP_MS = Number(process.env.REDAT_FOLLOW_UP_MS ?? 4000); // 0 disables the follow-up window
 let ttsDownUntil = 0;
+const MUTE_FILE = `${STATE}/muted`; // wake word off; survives restarts
+let muted = existsSync(MUTE_FILE);
+let spokeUntil = 0; // when ረዳት last finished speaking (its own "ረዳት" can still be in the detector's window)
 
 type State = "idle" | "listening" | "thinking" | "speaking";
 
@@ -117,6 +120,7 @@ async function turn(input: { wav?: string; text?: string }, my = ++gen) {
     sp.finish();
     await sp.done;
     spoke = sp.played;
+    if (spoke) spokeUntil = Date.now();
     if (sp.error && !sp.played) {
       error = `TTS: ${sp.error.message}`;
       log(error);
@@ -180,6 +184,28 @@ function handle(cmd: string, arg: string | undefined): { ok: boolean; msg: strin
       speaker?.cancel();
       start(listen);
       return { ok: true, msg: "interrupted, listening" };
+    case "wake": // the wake-word detector heard "ረዳት"
+      if (muted) return { ok: false, msg: "muted" };
+      if (Date.now() - spokeUntil < 1500) return { ok: false, msg: "ignored (just spoke)" };
+      if (state === "idle" || (state === "listening" && inFollowUp && !recorder?.speaking)) {
+        log(`wake word (score ${arg ?? "?"})`);
+        recorder?.stop();
+        start(listen);
+        return { ok: true, msg: "listening" };
+      }
+      // Busy: ignore, so ረዳት saying its own name (or the user saying it mid-request) can't retrigger.
+      return { ok: false, msg: `ignored (${state})` };
+    case "mute": {
+      const want = arg === "on" ? true : arg === "off" ? false : !muted;
+      if (want !== muted) {
+        muted = want;
+        if (muted) writeFileSync(MUTE_FILE, "");
+        else rmSync(MUTE_FILE, { force: true });
+        if (arg !== "on" && arg !== "off") // explicit on/off is used by scripts (enroll); stay quiet
+          note.show("ረዳት", muted ? "🔕 የመቀስቀሻ ቃል ጠፍቷል (wake word off)" : "🔔 የመቀስቀሻ ቃል በርቷል (wake word on)", 3000);
+      }
+      return { ok: true, msg: muted ? "wake word muted" : "wake word on" };
+    }
     case "say":
       if (!arg) return { ok: false, msg: "say needs text" };
       if (state === "listening") return { ok: false, msg: "busy (listening)" };
@@ -198,7 +224,7 @@ function handle(cmd: string, arg: string | undefined): { ok: boolean; msg: strin
     case "status":
       return {
         ok: true,
-        msg: JSON.stringify({ state, turns, session: brain.sessionId, model: MODEL, voice: VOICE, pid: process.pid }),
+        msg: JSON.stringify({ state, muted, turns, session: brain.sessionId, model: MODEL, voice: VOICE, pid: process.pid }),
       };
     case "quit":
       setTimeout(shutdown, 50);
