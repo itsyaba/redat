@@ -1,14 +1,19 @@
 //@ pragma UseQApplication
 //@ pragma Env QS_NO_RELOAD_POPUP=1
 
-// ረዳት panel: drops down from the top while Redat is active. Shows what it heard, the commands
-// it runs and its reply as it streams, with controls and a text box. Run: qs -p ~/projects/redat/panel
+// ረዳት panel, laid out like Caelestia's Media tab: avatar + visualiser where the cover art is, AI
+// info + controls where the track info is, and the chat where the lyrics are. It grows out of the
+// top screen border with Caelestia's own blob renderer, so it joins the frame like the dashboard.
+// Run: qs -p ~/projects/redat/panel (redat-panel.service)
 import QtQuick
+import QtQuick.Effects
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
+import Caelestia.Blobs
+import Caelestia.Config
 import qs.services
 import qs.components
 
@@ -16,20 +21,42 @@ ShellRoot {
     id: shell
 
     property bool open: false // window mapped
-    property bool slid: false // card slid down (animated)
+    property bool slid: false // panel out of the border (animated)
     property bool pinned: false
-    property bool typing: false // opened from the shortcut: grab the keyboard for the text box
+    property bool typing: false // grab the keyboard for the text box (shortcut, or clicked)
+    onTypingChanged: if (typing) input.forceActiveFocus()
     property bool speakReplies: true
     property ShellScreen target: Quickshell.screens[0] // the focused monitor when it opened
 
     function show(focus) {
-        if (!open)
-            target = Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? Quickshell.screens[0];
-        open = true;
-        slideIn.restart(); // after the window maps, so the slide-down animates
         if (focus)
             typing = true;
-        hideTimer.stop();
+        if (open) {
+            slid = true;
+            return;
+        }
+        // Ask Hyprland which monitor is focused (Quickshell's cached value can be stale), then map.
+        if (!monitors.running)
+            monitors.running = true;
+    }
+    function map(name) {
+        target = Quickshell.screens.find(s => s.name === name) ?? Quickshell.screens[0];
+        open = true;
+        slideIn.restart(); // after the window maps, so the slide animates
+    }
+
+    Process {
+        id: monitors
+        command: ["hyprctl", "-j", "monitors"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let name = "";
+                try {
+                    name = JSON.parse(text).find(m => m.focused)?.name ?? "";
+                } catch (e) {}
+                shell.map(name);
+            }
+        }
     }
     function hide() {
         slid = false;
@@ -42,27 +69,24 @@ ShellRoot {
         interval: 16
         onTriggered: shell.slid = true
     }
+    // Unmap once the panel has slid back into the border.
+    Timer {
+        id: closing
+        interval: 560
+        onTriggered: if (!shell.slid) shell.open = false
+    }
+    // Close a while after Redat goes idle, unless pinned, hovered or being typed in.
+    Timer {
+        interval: 9000
+        running: shell.slid && !shell.pinned && !shell.typing && Redat.state === "idle" && !Redat.paused && !win.hovered
+        onTriggered: shell.hide()
+    }
 
     Connections {
         target: Redat
         function onActivity() {
             shell.show(false);
         }
-    }
-
-    // Close a while after Redat goes idle, unless pinned, hovered or being typed in.
-    Timer {
-        id: hideTimer
-        interval: 9000
-        running: shell.slid && !shell.pinned && !shell.typing && Redat.state === "idle" && !Redat.paused && !win.hovered
-        onTriggered: shell.hide()
-    }
-
-    // Unmap once the slide-up animation has finished.
-    Timer {
-        id: closing
-        interval: 340
-        onTriggered: if (!shell.slid) shell.open = false
     }
 
     IpcHandler {
@@ -84,328 +108,469 @@ ShellRoot {
     PanelWindow {
         id: win
 
-        property bool hovered: hover.hovered
+        readonly property bool hovered: hover.hovered
+        readonly property real border: contentItem.Config.border.thickness
+        readonly property real panelWidth: 1080
+        readonly property real panelHeight: 340
 
         visible: shell.open
         screen: shell.target
         anchors.top: true
+        anchors.left: true
+        anchors.right: true
+        implicitHeight: border + panelHeight + 40
         exclusionMode: ExclusionMode.Ignore
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "redat-panel"
-        WlrLayershell.keyboardFocus: shell.typing ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.OnDemand
+        // Never take the keyboard when it pops up on its own (it would swallow what I'm typing
+        // elsewhere); only while I'm typing in it (shortcut or a click on the text box).
+        WlrLayershell.keyboardFocus: shell.typing ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         color: "transparent"
-        implicitWidth: 760
-        implicitHeight: card.implicitHeight + 24
+        // Only the panel takes input; the rest of the strip stays click-through.
+        mask: Region {
+            item: maskItem
+        }
 
-        Rectangle {
-            id: card
+        Item {
+            id: maskItem
+            x: panel.x
+            y: win.border
+            width: panel.width
+            height: Math.max(0, panel.y + panel.height)
+        }
 
-            width: parent.width - 24
-            x: 12
-            y: shell.slid ? 10 : -height - 20
-            implicitHeight: body.implicitHeight + 28
-            radius: Theme.radius
-            color: Theme.surface
-            border.width: 1
-            border.color: Qt.alpha(Theme.outlineVariant, 0.6)
-            Behavior on y { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+        // Everything below the border line. The blob strip that stands in for the border sits above
+        // this and is clipped away, so only the smooth join (and the panel) is drawn here.
+        Item {
+            id: below
 
-            HoverHandler { id: hover }
+            y: win.border
+            width: parent.width
+            height: parent.height - win.border
+            clip: true
 
-            ColumnLayout {
-                id: body
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: 14
-                anchors.leftMargin: 18
-                anchors.rightMargin: 18
-                spacing: 12
+            Item {
+                anchors.fill: parent
+                layer.enabled: true
+                layer.effect: MultiEffect {
+                    shadowEnabled: true
+                    blurMax: 15
+                    shadowColor: Qt.alpha(Theme.shadow, 0.7)
+                }
 
-                // ── Header: orb, state, pin/close
+                BlobGroup {
+                    id: blobs
+                    color: Qt.alpha(Theme.surfaceBase, Tokens.transparency.enabled ? Tokens.transparency.base : 1)
+                    smoothing: win.contentItem.Config.border.smoothing
+                }
+                BlobRect {
+                    group: blobs
+                    x: panel.x - 70
+                    y: -300
+                    implicitWidth: panel.width + 140
+                    implicitHeight: 300
+                    radius: 0
+                }
+                BlobRect {
+                    id: panelBlob
+                    group: blobs
+                    x: panel.x
+                    y: panel.y
+                    implicitWidth: panel.width
+                    implicitHeight: panel.height
+                    radius: Tokens.rounding.extraLarge
+                    deformScale: (0.1 * win.contentItem.Config.appearance.deformScale) / 10000
+                }
+            }
+
+            Item {
+                id: panel
+
+                x: (parent.width - width) / 2
+                y: shell.slid ? 0 : -height - 5
+                width: win.panelWidth
+                height: win.panelHeight
+                opacity: shell.slid ? 1 : 0
+                transform: Matrix4x4 {
+                    matrix: panelBlob.deformMatrix
+                }
+
+                Behavior on y {
+                    NumberAnimation {
+                        duration: Tokens.anim.durations.expressiveDefaultSpatial
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Tokens.anim.expressiveDefaultSpatial.bezierCurve
+                    }
+                }
+                Behavior on opacity {
+                    NumberAnimation { duration: Tokens.anim.durations.normal }
+                }
+
+                HoverHandler {
+                    id: hover
+                }
+
+                // Drifting shapes, clipped to the panel's rounded shape.
+                Item {
+                    anchors.fill: parent
+                    layer.enabled: true
+                    layer.effect: MultiEffect {
+                        maskEnabled: true
+                        maskSource: roundMask
+                    }
+                    BackgroundShapes {
+                        anchors.fill: parent
+                        running: Redat.state !== "idle"
+                    }
+                }
+                Rectangle {
+                    id: roundMask
+                    anchors.fill: parent
+                    radius: Tokens.rounding.extraLarge
+                    visible: false
+                    layer.enabled: true
+                }
+
                 RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 14
+                    anchors.fill: parent
+                    anchors.margins: Tokens.padding.large
+                    spacing: Tokens.spacing.extraLarge
 
-                    Orb {}
+                    // ── Avatar + visualiser (the "cover art")
+                    AvatarVisualiser {
+                        Layout.fillHeight: true
+                        implicitWidth: 300
+                        coverSize: 196
+                    }
 
+                    // ── AI info + controls (the "track info")
                     ColumnLayout {
-                        spacing: 0
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignVCenter
+                        spacing: Tokens.spacing.extraSmall
+
                         Text {
-                            text: "ረዳት"
+                            Layout.fillWidth: true
+                            text: "ረዳት · Redat"
                             color: Theme.onSurface
-                            font.family: Theme.font
-                            font.pixelSize: 20
-                            font.weight: Font.DemiBold
+                            font: Tokens.font.title.large
+                            elide: Text.ElideRight
                         }
                         Text {
-                            text: !Redat.online ? "አልተገናኘም · daemon offline (redat start)"
+                            Layout.fillWidth: true
+                            text: !Redat.online ? "አልተገናኘም · offline (redat start)"
                                 : Redat.paused ? "ቆሟል · paused"
                                 : Redat.state === "listening" ? (Redat.followUp ? "ይቀጥሉ… · follow-up" : "እያዳመጥኩ ነው… · listening")
                                 : Redat.state === "thinking" ? "እያሰብኩ ነው… · thinking"
                                 : Redat.state === "speaking" ? "እየተናገርኩ ነው… · speaking"
                                 : "ዝግጁ · ready"
                             color: !Redat.online ? Theme.error : Theme.onSurfaceVariant
-                            font.family: Theme.font
-                            font.pixelSize: 13
+                            font: Tokens.font.title.medium
+                            elide: Text.ElideRight
                         }
-                    }
-
-                    Wave {
-                        visible: Redat.state === "listening"
-                        Layout.leftMargin: 8
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    Rectangle {
-                        visible: Redat.muted
-                        implicitWidth: muteLabel.implicitWidth + 20
-                        implicitHeight: 26
-                        radius: 13
-                        color: Theme.surfaceHighest
                         Text {
-                            id: muteLabel
-                            anchors.centerIn: parent
-                            text: "🔕 wake word off"
-                            color: Theme.onSurfaceVariant
-                            font.family: Theme.font
-                            font.pixelSize: 11
-                        }
-                    }
-
-                    IconButton {
-                        icon: "keep"
-                        tip: shell.pinned ? "Unpin" : "Keep open"
-                        active: shell.pinned
-                        onClicked: shell.pinned = !shell.pinned
-                    }
-                    IconButton {
-                        icon: "close"
-                        tip: "Close (Esc)"
-                        onClicked: shell.hide()
-                    }
-                }
-
-                // ── Conversation
-                Rectangle {
-                    Layout.fillWidth: true
-                    implicitHeight: Math.min(Math.max(list.contentHeight, 0), 460)
-                    visible: Redat.turns.count > 0
-                    color: "transparent"
-                    clip: true
-
-                    ListView {
-                        id: list
-                        anchors.fill: parent
-                        model: Redat.turns
-                        spacing: 18
-                        boundsBehavior: Flickable.StopAtBounds
-                        // Stick to the newest message while it streams, unless I've scrolled up.
-                        property bool follow: true
-                        onMovementEnded: follow = atYEnd
-                        onContentHeightChanged: if (follow) Qt.callLater(positionViewAtEnd)
-                        onCountChanged: {
-                            follow = true;
-                            Qt.callLater(positionViewAtEnd);
-                        }
-                        delegate: TurnView {
-                            width: ListView.view.width
-                        }
-                    }
-                }
-
-                Text {
-                    visible: Redat.turns.count === 0
-                    Layout.fillWidth: true
-                    Layout.topMargin: 4
-                    Layout.bottomMargin: 4
-                    horizontalAlignment: Text.AlignHCenter
-                    text: "«ረዳት» ይበሉ፣ SUPER+Y ይጫኑ፣ ወይም ከታች ይጻፉ\nSay “ረዳት”, press SUPER+Y, or type below"
-                    color: Theme.onSurfaceVariant
-                    font.family: Theme.font
-                    font.pixelSize: 13
-                    lineHeight: 1.2
-                }
-
-                Text {
-                    visible: Redat.lastError !== ""
-                    Layout.fillWidth: true
-                    text: "⚠ " + Redat.lastError
-                    color: Theme.error
-                    font.family: Theme.font
-                    font.pixelSize: 12
-                }
-
-                // ── Text box
-                Rectangle {
-                    Layout.fillWidth: true
-                    implicitHeight: 52
-                    radius: 26
-                    color: Theme.surfaceHigh
-                    border.width: input.activeFocus ? 2 : 0
-                    border.color: Theme.primary
-
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 20
-                        anchors.rightMargin: 6
-                        spacing: 6
-
-                        TextInput {
-                            id: input
                             Layout.fillWidth: true
-                            color: Theme.onSurface
-                            selectionColor: Theme.primary
-                            selectedTextColor: Theme.onPrimary
-                            font.family: Theme.font
-                            font.pixelSize: 15
-                            clip: true
-                            focus: true
-                            activeFocusOnPress: true
+                            text: Redat.state === "thinking" && Redat.runningTool ? "⌘ " + Redat.runningTool
+                                : "Claude " + Redat.model + " · " + Redat.voice + (Redat.muted ? " · 🔕" : "")
+                            color: Theme.secondary
+                            font: Tokens.font.title.medium
+                            elide: Text.ElideRight
+                        }
 
-                            function submit() {
-                                const t = text.trim();
-                                if (!t)
-                                    return;
-                                Redat.send("say", t, { silent: !shell.speakReplies });
-                                text = "";
-                                shell.typing = false;
-                            }
-
-                            onAccepted: submit()
-                            Keys.onEscapePressed: shell.hide()
-                            onActiveFocusChanged: if (activeFocus) hideTimer.stop()
+                        // Reply speed, in place of the track progress bar.
+                        RowLayout {
+                            Layout.topMargin: Tokens.spacing.extraLargeIncreased
+                            Layout.fillWidth: true
+                            spacing: Tokens.spacing.small
 
                             Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: !input.text && !input.preeditText
-                                text: "ይጻፉ… · type a message"
+                                Layout.preferredWidth: 44
+                                horizontalAlignment: Text.AlignHCenter
+                                text: (speed.dragging ? 0.5 + speed.dragValue * 1.5 : Redat.speed).toFixed(2) + "×"
                                 color: Theme.onSurfaceVariant
-                                font: input.font
-                                opacity: 0.7
+                                font: Tokens.font.label.medium
+                            }
+                            WavySlider {
+                                id: speed
+                                Layout.fillWidth: true
+                                value: (Redat.speed - 0.5) / 1.5
+                                animate: Redat.state === "speaking" && !Redat.paused
+                                enabled: Redat.online
+                                onMoved: v => Redat.send("speed", String(Math.round((0.5 + v * 1.5) * 20) / 20))
+                            }
+                            Text {
+                                Layout.preferredWidth: 44
+                                horizontalAlignment: Text.AlignHCenter
+                                text: "2.00×"
+                                color: Theme.onSurfaceVariant
+                                font: Tokens.font.label.medium
                             }
                         }
 
-                        IconButton {
-                            icon: shell.speakReplies ? "volume_up" : "volume_off"
-                            tip: shell.speakReplies ? "Typed turns: spoken reply" : "Typed turns: silent reply"
-                            onClicked: shell.speakReplies = !shell.speakReplies
-                        }
-                        IconButton {
-                            icon: "arrow_upward"
-                            active: input.text.trim() !== ""
-                            enabled: Redat.online && input.text.trim() !== ""
-                            tip: "Send (Enter)"
-                            onClicked: input.submit()
-                        }
-                    }
-                }
-
-                // ── Controls
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-
-                    IconButton {
-                        big: true
-                        icon: "mic"
-                        tip: Redat.state === "listening" ? "Stop recording" : "Listen (SUPER+Y)"
-                        active: Redat.state === "listening"
-                        enabled: Redat.online
-                        onClicked: Redat.send("listen")
-                    }
-                    IconButton {
-                        big: true
-                        icon: Redat.paused ? "play_arrow" : "pause"
-                        tip: Redat.paused ? "Resume" : "Pause"
-                        active: Redat.paused
-                        activeColour: Theme.tertiary
-                        enabled: Redat.online && (Redat.state === "speaking" || Redat.state === "thinking" || Redat.paused)
-                        onClicked: Redat.send("pause")
-                    }
-                    IconButton {
-                        big: true
-                        icon: "stop"
-                        tip: "Stop"
-                        enabled: Redat.online && Redat.state !== "idle"
-                        onClicked: Redat.send("cancel")
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    // Reply speed
-                    Rectangle {
-                        implicitHeight: 40
-                        implicitWidth: speedRow.implicitWidth + 8
-                        radius: 20
-                        color: Theme.surfaceHigh
+                        // Controls, in place of shuffle / previous / play / next / repeat.
                         RowLayout {
-                            id: speedRow
-                            anchors.centerIn: parent
-                            spacing: 0
-                            IconButton {
-                                icon: "remove"
-                                tip: "Slower"
-                                enabled: Redat.online && Redat.speed > 0.55
-                                onClicked: Redat.send("speed", String(Math.round((Redat.speed - 0.05) * 100) / 100))
+                            id: controls
+
+                            readonly property bool talking: Redat.state === "speaking" || Redat.state === "thinking" || Redat.paused
+
+                            Layout.topMargin: Tokens.spacing.largeIncreased
+                            Layout.alignment: Qt.AlignHCenter
+                            spacing: Tokens.spacing.extraSmall
+
+                            TonalButton {
+                                icon: Redat.muted ? "notifications_off" : "notifications_active"
+                                tip: Redat.muted ? "Wake word off" : "Wake word on"
+                                checked: Redat.muted
+                                enabled: Redat.online
+                                implicitWidth: 44
+                                iconSize: 20
+                                onClicked: Redat.send("mute")
                             }
-                            Item {
-                                Layout.minimumWidth: 66
-                                implicitWidth: speedLabel.implicitWidth
-                                implicitHeight: 40
-                                Row {
-                                    id: speedLabel
-                                    anchors.centerIn: parent
-                                    spacing: 4
+                            TonalButton {
+                                icon: "stop"
+                                tip: "Stop"
+                                enabled: Redat.online && Redat.state !== "idle"
+                                iconSize: 28
+                                onClicked: Redat.send("cancel")
+                            }
+                            TonalButton {
+                                filled: true
+                                implicitWidth: 76
+                                implicitHeight: 56
+                                iconSize: 32
+                                enabled: Redat.online
+                                icon: controls.talking ? (Redat.paused ? "play_arrow" : "pause") : "mic"
+                                tip: controls.talking ? (Redat.paused ? "Resume" : "Pause") : Redat.state === "listening" ? "Stop recording" : "Listen (SUPER+Y)"
+                                onClicked: controls.talking ? Redat.send("pause") : Redat.send("listen")
+                            }
+                            TonalButton {
+                                icon: "mic"
+                                tip: "Interrupt and listen"
+                                checked: Redat.state === "listening"
+                                enabled: Redat.online
+                                iconSize: 28
+                                onClicked: Redat.send("listen")
+                            }
+                            TonalButton {
+                                icon: "restart_alt"
+                                tip: "New conversation"
+                                enabled: Redat.online
+                                implicitWidth: 44
+                                iconSize: 20
+                                onClicked: Redat.send("reset")
+                            }
+                        }
+                    }
+
+                    // ── Chat (the "lyrics")
+                    ColumnLayout {
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: 360
+                        spacing: Tokens.spacing.small
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Tokens.spacing.small
+                            Icon {
+                                text: "forum"
+                                size: 22
+                                color: Theme.onSurface
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "ውይይት · Chat"
+                                color: Theme.onSurface
+                                font: Tokens.font.title.medium
+                            }
+                            TonalButton {
+                                icon: "keep"
+                                tip: shell.pinned ? "Unpin" : "Keep open"
+                                checked: shell.pinned
+                                implicitWidth: 36
+                                implicitHeight: 36
+                                iconSize: 18
+                                onClicked: shell.pinned = !shell.pinned
+                            }
+                            TonalButton {
+                                icon: "close"
+                                tip: "Close (Esc)"
+                                implicitWidth: 36
+                                implicitHeight: 36
+                                iconSize: 18
+                                onClicked: shell.hide()
+                            }
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+
+                            // Fade the top and bottom edges like the lyrics list.
+                            layer.enabled: true
+                            layer.effect: MultiEffect {
+                                maskEnabled: true
+                                maskSource: fade
+                            }
+                            Rectangle {
+                                id: fade
+                                anchors.fill: parent
+                                visible: false
+                                layer.enabled: true
+                                gradient: Gradient {
+                                    GradientStop { position: 0; color: "transparent" }
+                                    GradientStop { position: 0.12; color: "white" }
+                                    GradientStop { position: 0.94; color: "white" }
+                                    GradientStop { position: 1; color: "transparent" }
+                                }
+                            }
+
+                            ListView {
+                                id: chat
+                                anchors.fill: parent
+                                model: Redat.turns
+                                spacing: 14
+                                topMargin: 18
+                                bottomMargin: 12
+                                boundsBehavior: Flickable.StopAtBounds
+                                property bool follow: true
+                                onMovementEnded: follow = atYEnd
+                                onContentHeightChanged: if (follow) Qt.callLater(positionViewAtEnd)
+                                onCountChanged: {
+                                    follow = true;
+                                    Qt.callLater(positionViewAtEnd);
+                                }
+                                delegate: ChatTurn {
+                                    width: ListView.view.width
+                                    current: index === ListView.view.count - 1
+                                }
+                            }
+
+                            Text {
+                                anchors.centerIn: parent
+                                visible: Redat.turns.count === 0
+                                horizontalAlignment: Text.AlignHCenter
+                                text: "«ረዳት» ይበሉ ወይም ይጻፉ\nSay “ረዳት” or type below"
+                                color: Theme.onSurfaceVariant
+                                font: Tokens.font.body.medium
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: Redat.lastError !== ""
+                            text: "⚠ " + Redat.lastError
+                            color: Theme.error
+                            elide: Text.ElideRight
+                            font: Tokens.font.label.medium
+                        }
+
+                        // Text box, in place of the player selector.
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: 44
+                                topLeftRadius: 22
+                                bottomLeftRadius: 22
+                                topRightRadius: 8
+                                bottomRightRadius: 8
+                                color: Theme.secondaryContainer
+                                border.width: shell.typing ? 2 : 0
+                                border.color: Theme.primary
+
+                                TapHandler {
+                                    onTapped: shell.typing = true
+                                }
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 14
+                                    anchors.rightMargin: 10
+                                    spacing: 8
                                     Icon {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: "speed"
-                                        size: 18
-                                        color: Theme.onSurfaceVariant
+                                        text: "keyboard"
+                                        size: 20
+                                        color: Theme.onSecondaryContainer
                                     }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: Redat.speed.toFixed(2) + "×"
-                                        color: Theme.onSurface
-                                        font.family: Theme.font
-                                        font.pixelSize: 13
+                                    TextInput {
+                                        id: input
+                                        Layout.fillWidth: true
+                                        color: Theme.onSecondaryContainer
+                                        selectionColor: Theme.primary
+                                        selectedTextColor: Theme.onPrimary
+                                        font: Tokens.font.body.large
+                                        clip: true
+                                        focus: true
+
+                                        function submit() {
+                                            const t = text.trim();
+                                            if (!t)
+                                                return;
+                                            Redat.send("say", t, { silent: !shell.speakReplies });
+                                            text = "";
+                                            shell.typing = false;
+                                        }
+
+                                        onAccepted: submit()
+                                        Keys.onEscapePressed: {
+                                            text = "";
+                                            shell.hide();
+                                        }
+                                        // A click straight on the text also starts typing.
+                                        TapHandler {
+                                            onTapped: shell.typing = true
+                                        }
+
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            visible: !input.text && !input.preeditText
+                                            text: "ይጻፉ… · type a message"
+                                            color: Theme.onSecondaryContainer
+                                            opacity: 0.6
+                                            font: input.font
+                                        }
+                                    }
+                                    Icon {
+                                        text: "arrow_upward"
+                                        size: 20
+                                        visible: input.text.trim() !== ""
+                                        color: Theme.primary
+                                        TapHandler {
+                                            onTapped: input.submit()
+                                        }
                                     }
                                 }
-                                ToolTipLite {
-                                    text: "Reply speed (click: reset to 1.15×)"
-                                    shown: speedArea.containsMouse
+                            }
+                            // Spoken vs silent replies for typed turns (the split-button half).
+                            Rectangle {
+                                implicitWidth: 44
+                                implicitHeight: 44
+                                topLeftRadius: 8
+                                bottomLeftRadius: 8
+                                topRightRadius: 22
+                                bottomRightRadius: 22
+                                color: Theme.secondaryContainer
+                                Icon {
+                                    anchors.centerIn: parent
+                                    text: shell.speakReplies ? "volume_up" : "volume_off"
+                                    size: 20
+                                    color: Theme.onSecondaryContainer
                                 }
                                 MouseArea {
-                                    id: speedArea
+                                    id: voiceToggle
                                     anchors.fill: parent
                                     hoverEnabled: true
-                                    onClicked: Redat.send("speed", "1.15")
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: shell.speakReplies = !shell.speakReplies
+                                }
+                                ToolTipLite {
+                                    text: shell.speakReplies ? "Typed turns: spoken reply" : "Typed turns: silent reply"
+                                    shown: voiceToggle.containsMouse
                                 }
                             }
-                            IconButton {
-                                icon: "add"
-                                tip: "Faster"
-                                enabled: Redat.online && Redat.speed < 1.95
-                                onClicked: Redat.send("speed", String(Math.round((Redat.speed + 0.05) * 100) / 100))
-                            }
                         }
-                    }
-
-                    IconButton {
-                        icon: Redat.muted ? "notifications_off" : "notifications_active"
-                        tip: Redat.muted ? "Wake word off — turn on" : "Wake word on — turn off"
-                        active: Redat.muted
-                        activeColour: Theme.errorContainer
-                        activeText: Theme.onSurface
-                        enabled: Redat.online
-                        onClicked: Redat.send("mute")
-                    }
-                    IconButton {
-                        icon: "restart_alt"
-                        tip: "New conversation"
-                        enabled: Redat.online
-                        onClicked: Redat.send("reset")
                     }
                 }
             }

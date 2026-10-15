@@ -66,7 +66,8 @@ function emit(ev: object) {
   for (const s of subscribers) s.write(line);
 }
 function status() {
-  return { state, muted, paused: !!speaker?.isPaused, speed: voiceSpeed.speed, followUp: inFollowUp, session: brain.sessionId };
+  const voice = VOICE.replace(/^am-/, "");
+  return { state, muted, paused: !!speaker?.isPaused, speed: voiceSpeed.speed, followUp: inFollowUp, session: brain.sessionId, model: MODEL, voice };
 }
 function emitStatus() {
   emit({ type: "state", ...status() });
@@ -305,7 +306,7 @@ function handle({ cmd, arg, silent }: Request): { ok: boolean; msg: string } {
       emitStatus();
       return { ok: true, msg: `new conversation ${brain.sessionId}` };
     case "status":
-      return { ok: true, msg: JSON.stringify({ ...status(), turns, model: MODEL, voice: VOICE, pid: process.pid }) };
+      return { ok: true, msg: JSON.stringify({ ...status(), turns, pid: process.pid }) };
     case "quit":
       setTimeout(shutdown, 50);
       return { ok: true, msg: "bye" };

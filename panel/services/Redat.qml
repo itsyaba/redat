@@ -15,6 +15,9 @@ Singleton {
     property bool paused: false
     property bool followUp: false
     property real speed: 1.15
+    property string model: ""
+    property string voice: ""
+    property string runningTool: "" // the command Claude is running right now
     property var levels: [] // recent mic levels (RMS) while listening
     property string lastError: ""
 
@@ -70,6 +73,8 @@ Singleton {
         paused = ev.paused;
         followUp = ev.followUp;
         speed = ev.speed;
+        model = ev.model ?? "";
+        voice = ev.voice ?? "";
         if (state !== "listening")
             levels = [];
         if (state !== "idle" && state !== was && !(state === "listening" && followUp))
@@ -105,6 +110,7 @@ Singleton {
         case "tool":
             if ((i = indexOf(ev.turnId)) >= 0)
                 turns.get(i).tools.append(toolRow(ev.tool));
+            runningTool = ev.tool.input;
             break;
         case "toolResult":
             if ((i = indexOf(ev.turnId)) >= 0) {
@@ -112,11 +118,13 @@ Singleton {
                 for (let j = 0; j < tools.count; j++)
                     if (tools.get(j).id === ev.id) {
                         tools.set(j, { output: ev.output, error: ev.error, ms: ev.ms, running: false });
+                        runningTool = "";
                         break;
                     }
             }
             break;
         case "done":
+            runningTool = "";
             if ((i = indexOf(ev.id)) >= 0) {
                 turns.setProperty(i, "done", true);
                 turns.setProperty(i, "error", ev.error ?? "");

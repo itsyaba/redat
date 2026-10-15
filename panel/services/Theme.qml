@@ -27,6 +27,10 @@ Singleton {
     readonly property color secondaryContainer: col("secondaryContainer", "#324b49")
     readonly property color onSecondaryContainer: col("onSecondaryContainer", "#cce8e5")
     readonly property color tertiary: col("tertiary", "#a3cbe8")
+    readonly property color secondary: col("secondary", "#b0ccc9")
+    readonly property color tertiaryContainer: col("tertiaryContainer", "#1e4a60")
+    readonly property color surfaceBase: col("surface", "#0a0f0f")
+    readonly property color shadow: col("shadow", "#000000")
     readonly property color error: col("error", "#ffb4ab")
     readonly property color errorContainer: col("errorContainer", "#93000a")
 
