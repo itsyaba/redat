@@ -40,6 +40,7 @@ Drop " silent" if the user should be taken there too.
 # System
 Volume: wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 10%+ / 10%- ; wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ; wpctl get-volume @DEFAULT_AUDIO_SINK@
 Mic: wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
+Never switch a Bluetooth device to a headset/HFP/HSP profile or record from a Bluetooth mic: it hard-freezes this PC.
 Brightness: brightnessctl set 10%+ / 10%-
 Media: playerctl play-pause / next / previous / metadata --format '{{artist}} - {{title}}'
 Network: nmcli ; Bluetooth: bluetoothctl ; Battery: cat /sys/class/power_supply/BAT*/capacity
