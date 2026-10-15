@@ -43,15 +43,16 @@ Goal: feels like a conversation, not a batch job.
   ✅ mostly: 2.8–3.7s from text to first audio (was ~15s); add ~2.5s for Addis STT when speaking. Barge-in verified.
 - [x] Extra: persistent Claude process (first token ~1s instead of 6–10s), Addis streaming TTS (first audio ~0.8s vs ~4s)
 
-## M4 — Wake word "ረዳት"
+## M4 — Wake word "ረዳት" ✅
 
 Goal: fully hands-free.
 
-- [ ] Choose an engine (likely openWakeWord, which runs locally and supports custom models)
-- [ ] Train a custom "ረዳት" model: synthetic samples from Addis TTS voices + my own recordings
-- [ ] Always-on mic capture in the daemon, shared with VAD
-- [ ] Tune false accepts and rejects; add a mute toggle via the CLI and the hotkey
+- [x] Choose an engine: openWakeWord streaming speech embeddings + my own small MLP classifier (`wakeword/`)
+- [x] Train a custom "ረዳት" model: synthetic samples from Addis + Edge TTS voices, confusables/negatives, background noise, and my own recordings (`redat enroll` → `redat train`, weighted ~30×)
+- [x] Always-on mic capture: separate `redat-wake.service` (pw-record) that sends `wake` to the daemon; only wakes when idle so it never triggers on its own voice
+- [x] Tune false accepts and rejects (2-frame confirmation + cooldown, `REDAT_WAKE_THRESHOLD`); mute toggle via `redat mute`
 - **Done when:** saying "ረዳት" from across the room reliably starts listening, and it rarely triggers when it shouldn't.
+  ✅ verified on recorded files; keep tuning the threshold from real-room use.
 
 ## M5 — Daily tools
 
