@@ -72,8 +72,11 @@ def mic_target() -> list[str]:
     """pw-record args pinning capture to a non-Bluetooth mic: recording a Bluetooth headset's mic forces
     it into HFP/SCO, and this always-on stream then made every headset connect/switch renegotiate SCO,
     which hard-froze the PC. REDAT_MIC overrides with a source name."""
+    # A bare --target is only a hint: WirePlumber re-links the stream to the new default source when a
+    # headset connects. These props make the pin strict (the stream errors out instead of moving).
+    pin = lambda n: ["--target", n, "-P", "{ node.dont-reconnect = true node.dont-fallback = true node.dont-move = true }"]
     if os.environ.get("REDAT_MIC"):
-        return ["--target", os.environ["REDAT_MIC"]]
+        return pin(os.environ["REDAT_MIC"])
     try:
         run = lambda *a: subprocess.run(["pactl", *a], capture_output=True, text=True, timeout=2).stdout
         sources = [l.split("\t")[1] for l in run("list", "sources", "short").splitlines() if "\t" in l]
@@ -81,7 +84,7 @@ def mic_target() -> list[str]:
         default = run("get-default-source").strip()
         mic = default if ok(default) else next(filter(ok, sources), None)
         if mic:
-            return ["--target", mic]
+            return pin(mic)
     except (OSError, subprocess.SubprocessError):
         pass
     return []

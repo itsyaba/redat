@@ -6,14 +6,17 @@ import { spawn, execFileSync } from "node:child_process";
  * renegotiate SCO, which hard-froze the PC. REDAT_MIC overrides with a source name.
  */
 export function micTarget(): string[] {
-  if (process.env.REDAT_MIC) return ["--target", process.env.REDAT_MIC];
+  // A bare --target is only a hint: WirePlumber re-links the stream to the new default source when a
+  // headset connects. These props make the pin strict (the stream errors out instead of moving).
+  const pin = (n: string) => ["--target", n, "-P", "{ node.dont-reconnect = true node.dont-fallback = true node.dont-move = true }"];
+  if (process.env.REDAT_MIC) return pin(process.env.REDAT_MIC);
   try {
     const run = (...a: string[]) => execFileSync("pactl", a, { encoding: "utf8", timeout: 2000 });
     const sources = run("list", "sources", "short").split("\n").map((l) => l.split("\t")[1]).filter(Boolean);
     const ok = (n: string) => !n.startsWith("bluez_") && !n.endsWith(".monitor");
     const def = run("get-default-source").trim();
     const mic = ok(def) ? def : sources.find(ok);
-    if (mic) return ["--target", mic];
+    if (mic) return pin(mic);
   } catch {}
   return []; // no usable non-Bluetooth mic info: fall back to the default
 }
